@@ -13,6 +13,36 @@ def show_page():
     UIComponents.sidebar()
     # -------------------------------------------
 
+    if 'recent_products' not in state.__dict__:
+        state.__dict__['recent_products'] = []
+
+    data = data_mgr.get_paginated_products(page=1, items_per_page=1000, category_filter="All")
+    products = data["items"]
+
+    total_produk = len(products)
+
+    brands = set(p.get("brand") for p in products if p.get("brand"))
+    jumlah_merek = len(brands)
+
+    rating_list = [
+        p.get("rating") or p.get("average_rating") or 0
+        for p in products
+    ]
+
+    rating_tertinggi = max(rating_list) if rating_list else 0
+
+    produk_rating_tertinggi = (
+        max(products, key=lambda x: x.get("rating") or 0)
+        if products else {}
+    )
+
+    harga_termurah = (
+        min((p.get("min_price") or 999999) for p in products)
+        if products else 0
+    )
+
+    recent_products = state.__dict__.get('recent_products', [])
+
     # --- SET DEFAULT CATEGORY ---
     if not hasattr(state, 'category'):
         state.category = 'Serum'
@@ -20,36 +50,42 @@ def show_page():
     # --- FUNCTION PILIH KATEGORI ---
     def pilih_kategori(kategori):
         state.category = kategori
-        ui.notify(f'Pilih: {kategori}')
-        ui.navigate.to('/')
+        state.page = 1   # reset halaman biar mulai dari awal
+        ui.navigate.to('/search')   # pindah ke halaman search
 
 
     with ui.column().classes('w-full p-8'):
 
-        # 📊 RINGKASAN DATA 
+    # 📊 RINGKASAN DATA 
         ui.label('RINGKASAN DATA').classes('text-sm font-bold text-gray-500 mb-2')
 
         with ui.row().classes('w-full gap-4 mb-8'):
 
+            # Total Produk
             with ui.card().classes('flex-1 items-center justify-center p-4 shadow-sm'):
                 ui.label('Total produk').classes('text-xs text-gray-500')
-                ui.label('312').classes('text-3xl font-black')
-                ui.label('dari 3 sumber').classes('text-xs text-green-500')
+                ui.label(str(total_produk)).classes('text-3xl font-black')
+                ui.label('dari database & scraping').classes('text-xs text-green-500')
 
+            # Jumlah Merek
             with ui.card().classes('flex-1 items-center justify-center p-4 shadow-sm'):
                 ui.label('Jumlah merek').classes('text-xs text-gray-500')
-                ui.label('48').classes('text-3xl font-black')
+                ui.label(str(jumlah_merek)).classes('text-3xl font-black')
                 ui.label('lokal & internasional').classes('text-xs text-green-500')
 
+            # Rating Tertinggi
             with ui.card().classes('flex-1 items-center justify-center p-4 shadow-sm'):
                 ui.label('Rating tertinggi').classes('text-xs text-gray-500')
-                ui.label('4.9').classes('text-3xl font-black')
-                ui.label('Somethinc Serum').classes('text-xs text-green-500')
+                ui.label(f"{rating_tertinggi:.1f}").classes('text-3xl font-black')
+                ui.label(
+                    produk_rating_tertinggi.get("product_name", "-")
+                ).classes('text-xs text-green-500')
 
+            # Harga Termurah
             with ui.card().classes('flex-1 items-center justify-center p-4 shadow-sm'):
                 ui.label('Harga terjangkau').classes('text-xs text-gray-500')
-                ui.label('Rp12k').classes('text-3xl font-black')
-                ui.label('harga/ml terendah').classes('text-xs text-green-500')
+                ui.label(f"Rp{int(harga_termurah/1000)}k").classes('text-3xl font-black')
+                ui.label('harga terendah').classes('text-xs text-green-500')
 
 
         # 🧴 PILIH KATEGORI 
@@ -84,33 +120,23 @@ def show_page():
             # KOLOM KIRI (Produk Terakhir)
             with ui.card().classes('flex-[2] p-6 shadow-sm'):
                 ui.label('Produk terakhir dilihat').classes('font-bold mb-4')
-                # Produk 1
-                with ui.row().classes('w-full items-center justify-between border-b pb-2'):
-                    ui.label('💧').classes('text-3xl bg-pink-50 rounded-lg p-2')
-                    with ui.column().classes('gap-0 flex-1 ml-4'):
-                        ui.label('Niacinamide 10% + Zinc 1%').classes('font-bold text-sm')
-                        ui.label('The Ordinary').classes('text-xs text-gray-500')
-                    with ui.column().classes('items-end gap-0'):
-                        ui.label('Rp145k').classes('text-pink-500 font-bold text-sm')
-                        ui.label('★★★★★').classes('text-yellow-400 text-xs')
 
-                with ui.row().classes('w-full items-center justify-between border-b pb-2'):
-                    ui.label('🧴').classes('text-3xl bg-pink-50 rounded-lg p-2')
-                    with ui.column().classes('gap-0 flex-1 ml-4'):
-                        ui.label('Acne Squad Serum').classes('font-bold text-sm')
-                        ui.label('Somethinc').classes('text-xs text-gray-500')
-                    with ui.column().classes('items-end gap-0'):
-                        ui.label('Rp189k').classes('text-pink-500 font-bold text-sm')
-                        ui.label('★★★★').classes('text-yellow-400 text-xs')
+                for p in recent_products:
+                    with ui.row().classes('w-full items-center justify-between border-b pb-2'):
 
-                with ui.row().classes('w-full items-center justify-between border-b pb-2'):
-                    ui.label('☀️').classes('text-3xl bg-pink-50 rounded-lg p-2')
-                    with ui.column().classes('gap-0 flex-1 ml-4'):
-                        ui.label('UV Shield SPF50+').classes('font-bold text-sm')
-                        ui.label('Somethinc').classes('text-xs text-gray-500')
-                    with ui.column().classes('items-end gap-0'):
-                        ui.label('Rp78k').classes('text-pink-500 font-bold text-sm')
-                        ui.label('★★★★★').classes('text-yellow-400 text-xs')
+                        ui.label('🧴').classes('text-3xl bg-pink-50 rounded-lg p-2')
+
+                        with ui.column().classes('gap-0 flex-1 ml-4'):
+                            ui.label(p.get("product_name", "-")).classes('font-bold text-sm')
+                            ui.label(p.get("brand", "-")).classes('text-xs text-gray-500')
+
+                        with ui.column().classes('items-end gap-0'):
+                            ui.label(
+                                f"Rp{int((p.get('min_price') or 0)/1000)}k"
+                            ).classes('text-pink-500 font-bold text-sm')
+                            ui.label(
+                                f"{p.get('rating', 0):.1f}⭐"
+                            ).classes('text-yellow-400 text-xs')
                         
             # KOLOM KANAN (Grafik Tipe Kulit)
             with ui.card().classes('flex-1 p-6 shadow-sm'):
