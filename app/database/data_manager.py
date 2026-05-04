@@ -65,24 +65,54 @@ class DataManager:
                 self._categories = ["All", "Face Wash", "Moisturizer", "Sunscreen", "Serum"]
         return self._categories
 
-    def get_paginated_products(self, page: int = 1, items_per_page: int = 12, category_filter: str = "All") -> Dict[str, Any]:
+    def get_paginated_products(
+        self, page: int = 1, items_per_page: int = 12, category_filter: str = "All",
+        keyword: str = "", min_price: float = 0.0, max_price: float = float('inf'),
+        sort_val: str = "Rating (Tertinggi)"
+    ) -> Dict[str, Any]:
         """Pencarian efisien Big-O(1) Pagination limit-offset pada SQL"""
         with SessionLocal() as session:
+            # Cek apakah db benar-benar kosong (< 10 data total) untuk pakai fallback
+            is_empty_db = session.query(SociollaReferensi).count() < 10
+            if is_empty_db:
+                return self._fallback_json_load(
+                    page, items_per_page, category_filter,
+                    keyword, min_price, max_price, sort_val
+                )
+
             query = session.query(SociollaReferensi)
             if category_filter != "All":
                 query = query.filter(SociollaReferensi.category == category_filter)
+            
+            if keyword:
+                from sqlalchemy import or_
+                search_term = f"%{keyword.lower()}%"
+                query = query.filter(or_(
+                    SociollaReferensi.product_name.ilike(search_term),
+                    SociollaReferensi.brand.ilike(search_term)
+                ))
+                
+            if min_price > 0:
+                query = query.filter(SociollaReferensi.min_price >= min_price)
+            if max_price < float('inf'):
+                query = query.filter(SociollaReferensi.min_price <= max_price)
+                
+            if sort_val == 'Rating (Tertinggi)':
+                query = query.order_by(SociollaReferensi.rating_sociolla.desc())
+            elif sort_val == 'Harga (Terendah)':
+                query = query.order_by(SociollaReferensi.min_price.asc())
+            elif sort_val == 'Harga (Tertinggi)':
+                query = query.order_by(SociollaReferensi.min_price.desc())
                 
             total_items = query.count()
             
-            # [HYBRID FALLBACK]
-            # Jika database hampir kosong (< 10 produk), gunakan JSON fallback agar data lengkap muncul
-            if total_items < 10:
-                return self._fallback_json_load(page, items_per_page, category_filter)
-
-            total_pages = (total_items + items_per_page - 1) // items_per_page
+            total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
             safe_page = max(1, min(page, total_pages))
             
-            results = query.offset((safe_page - 1) * items_per_page).limit(items_per_page).all()
+            if total_items > 0:
+                results = query.offset((safe_page - 1) * items_per_page).limit(items_per_page).all()
+            else:
+                results = []
             
             items = []
             for r in results:
@@ -105,7 +135,11 @@ class DataManager:
                 "total_items": total_items
             }
 
-    def _fallback_json_load(self, page, items_per_page, category_filter) -> Dict[str, Any]:
+    def _fallback_json_load(
+        self, page, items_per_page, category_filter,
+        keyword="", min_price=0.0, max_price=float('inf'),
+        sort_val="Rating (Tertinggi)"
+    ) -> Dict[str, Any]:
         """Menyediakan data dari file JSON hasil Scraping dengan In-Memory Caching."""
         
         # 1. Cek apakah cache sudah terisi
@@ -139,10 +173,30 @@ class DataManager:
             valid_cats = ui_to_json.get(filter_cat, [filter_cat])
             return prod_cat in valid_cats
 
-        filtered_products = [
-            p for p in self._cached_products 
-            if matches_filter(p.get("category", ""), category_filter)
-        ]
+        filtered_products = []
+        for p in self._cached_products:
+            if not matches_filter(p.get("category", ""), category_filter):
+                continue
+                
+            if keyword:
+                kw = keyword.lower()
+                name = p.get('product_name', p.get('name', '')).lower()
+                brand = p.get('brand', '').lower()
+                if kw not in name and kw not in brand:
+                    continue
+                    
+            price = p.get('min_price', p.get('price', 0))
+            if price < min_price or price > max_price:
+                continue
+                
+            filtered_products.append(p)
+            
+        if sort_val == 'Rating (Tertinggi)':
+            filtered_products.sort(key=lambda x: x.get('average_rating', x.get('rating', 0)), reverse=True)
+        elif sort_val == 'Harga (Terendah)':
+            filtered_products.sort(key=lambda x: x.get('min_price', x.get('price', float('inf'))))
+        elif sort_val == 'Harga (Tertinggi)':
+            filtered_products.sort(key=lambda x: x.get('min_price', x.get('price', 0)), reverse=True)
                 
         total_items = len(filtered_products)
         if total_items == 0:

@@ -111,10 +111,26 @@ def show_page():
                     backend_category = ui_to_backend.get(category_filter, 'All')
                     print(f"DEBUG backend_category = {backend_category}")
 
+                    min_price, max_price = 0.0, float('inf')
+                    if price_select.value == '< Rp 50k':
+                        max_price = 49999.0
+                    elif price_select.value == 'Rp 50k - Rp 150k':
+                        min_price = 50000.0
+                        max_price = 150000.0
+                    elif price_select.value == 'Rp 150k - Rp 300k':
+                        min_price = 150000.1
+                        max_price = 300000.0
+                    elif price_select.value == '> Rp 300k':
+                        min_price = 300000.1
+
                     paginated_data = data_mgr.get_paginated_products(
                         page=state.page,
                         items_per_page=12,
-                        category_filter=backend_category
+                        category_filter=backend_category,
+                        keyword=keyword,
+                        min_price=min_price,
+                        max_price=max_price,
+                        sort_val=sort_val
                     )
                     
                     print(f"DEBUG total_items = {paginated_data['total_items']}")
@@ -122,27 +138,7 @@ def show_page():
                     
                     items = paginated_data["items"]
 
-                    if keyword:
-                        items = [p for p in items if keyword in p.get('product_name', p.get('name', '')).lower()
-                                or keyword in p.get('brand', '').lower()]
-
-                    if price_select.value == '< Rp 50k':
-                        items = [p for p in items if p.get('min_price', p.get('price', 0)) < 50000]
-                    elif price_select.value == 'Rp 50k - Rp 150k':
-                        items = [p for p in items if 50000 <= p.get('min_price', p.get('price', 0)) <= 150000]
-                    elif price_select.value == 'Rp 150k - Rp 300k':
-                        items = [p for p in items if 150000 < p.get('min_price', p.get('price', 0)) <= 300000]
-                    elif price_select.value == '> Rp 300k':
-                        items = [p for p in items if p.get('min_price', p.get('price', 0)) > 300000]
-
-                    if sort_val == 'Rating (Tertinggi)':
-                        items = sorted(items, key=lambda x: x.get('average_rating', x.get('rating', 0)), reverse=True)
-                    elif sort_val == 'Harga (Terendah)':
-                        items = sorted(items, key=lambda x: x.get('min_price', x.get('price', float('inf'))))
-                    elif sort_val == 'Harga (Tertinggi)':
-                        items = sorted(items, key=lambda x: x.get('min_price', x.get('price', 0)), reverse=True)
-
-                    ui.label(f'{len(items)} PRODUK DITEMUKAN').classes('text-xs font-bold text-gray-500 mb-6 tracking-wider')
+                    ui.label(f'{paginated_data["total_items"]} PRODUK DITEMUKAN').classes('text-xs font-bold text-gray-500 mb-6 tracking-wider')
 
                     if len(items) == 0:
                         with ui.column().classes('w-full items-center justify-center p-12'):

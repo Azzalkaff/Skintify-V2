@@ -249,16 +249,18 @@ class UIComponents:
 
         with ui.row().classes('w-full items-center justify-center gap-4 mt-8 p-2 rounded-lg').style('background-color: var(--surface2); border: 1px solid var(--border-lt);'):
             # Tombol Prev (Disable jika di halaman 1)
-            ui.button(icon='chevron_left', on_click=lambda: on_change(current_page - 1)) \
-                .props('outline round size=sm').classes('text-gray-600') \
-                .disable() if current_page <= 1 else None
+            prev_btn = ui.button(icon='chevron_left', on_click=lambda: on_change(current_page - 1)) \
+                .props('outline round size=sm').classes('text-gray-600')
+            if current_page <= 1:
+                prev_btn.disable()
             
             ui.label(f"Halaman {current_page} dari {total_pages}").classes('text-sm font-bold').style('color: var(--text2);')
             
             # Tombol Next (Disable jika di halaman terakhir)
-            ui.button(icon='chevron_right', on_click=lambda: on_change(current_page + 1)) \
-                .props('outline round size=sm').classes('text-gray-600') \
-                .disable() if current_page >= total_pages else None
+            next_btn = ui.button(icon='chevron_right', on_click=lambda: on_change(current_page + 1)) \
+                .props('outline round size=sm').classes('text-gray-600')
+            if current_page >= total_pages:
+                next_btn.disable()
 
     @staticmethod
     def empty_state_svg() -> None:
