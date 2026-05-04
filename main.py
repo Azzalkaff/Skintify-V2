@@ -24,7 +24,7 @@ app.add_static_files('/static', style_dir)
 # Najla: compare, stats
 # Falisha: profile, onboarding
 PAGES = {
-    '/': 'syaqila.home_page',
+    # '/': 'syaqila.home_page',
     '/search': 'syhid.search_page',
     '/compare': 'najla.compare_page',
     '/wishlist': 'syaqila.wishlist_page',
@@ -33,6 +33,19 @@ PAGES = {
     '/onboarding': 'falisha.onboarding_page',
     '/login': 'login_page',
 }
+
+@ui.page('/')
+def index():
+    if not app.storage.user.get('skin_type'):
+        return ui.navigate.to('/onboarding')
+    
+    try:
+        module = importlib.import_module('app.ui.pages.syaqila.home_page')
+        importlib.reload(module)
+        return module.show_page()
+    except Exception as e:
+        logger.error(f"Error loading home: {e}")
+        ui.label("Gagal memuat halaman utama.")
 
 def create_safe_route(path, module_name):
     """Fungsi pembungkus agar error di satu file tidak merusak seluruh aplikasi"""
@@ -68,7 +81,7 @@ for path, module in PAGES.items():
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
         title="Skintify Desktop - Team Lab", 
-        storage_secret='super-secret-key-123',
+        storage_secret='reset-falisha-01',
         native=True,
         window_size=(1280, 800),
         reload=False

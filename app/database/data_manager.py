@@ -31,14 +31,14 @@ class DataManager:
         
         # Mapping Kategori untuk Harmonisasi UI (Pilihan A)
         self.CATEGORY_MAP = {
-            "Face Gel": "Moisturizer",
-            "Micellar Water": "Face Wash",
-            "Cleanser": "Face Wash",
-            "Face Wash": "Face Wash",
-            "Moisturizer": "Moisturizer",
-            "Sunscreen": "Sunscreen",
-            "Serum": "Serum",
-            "Toner": "Serum" # Digabung ke serum/treatment untuk simplifikasi
+            # Mapping dari nama JSON → nama UI
+            "Face Serum": "Serum",        
+            "Face Gel": "Moisturizer",    # ✅ sudah ada
+            "Micellar Water": "Cleanser", # ✅ 
+            "Face Wash": "Cleanser",      # ✅
+            "Scrub & Exfoliator": "Cleanser",
+            "Face Mist": "Toner",         # ← anggap face mist = toner
+            "Sunscreen": "Sunscreen",     # ✅
         }
 
     def get_ingredient_profile(self, product: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -120,13 +120,24 @@ class DataManager:
                         self._cached_products = data if isinstance(data, list) else data.get("products", [])
                 except Exception as e:
                     logger.error(f"Gagal memuat JSON fallback: {e}")
+                
+        all_cats = set(p.get("category", "") for p in self._cached_products)
+        print(f"DEBUG semua kategori di JSON: {all_cats}")
         
         # 2. Filter data dari Memori (Bukan Disk) - Kecepatan O(N) di RAM
         def matches_filter(prod_cat, filter_cat):
             if filter_cat == "All": return True
-            # Cek pemetaan: misal prod_cat="Face Gel" di-map ke "Moisturizer"
-            mapped_cat = self.CATEGORY_MAP.get(prod_cat, prod_cat)
-            return mapped_cat.lower() == filter_cat.lower()
+            
+            ui_to_json = {
+                "Serum": ["Face Serum"],
+                "Moisturizer": ["Face Gel", "Moisturizer"],
+                "Cleanser": ["Face Wash", "Micellar Water", "Scrub & Exfoliator"],
+                "Toner": ["Face Mist", "Toner"],
+                "Sunscreen": ["Sunscreen"],
+            }
+            
+            valid_cats = ui_to_json.get(filter_cat, [filter_cat])
+            return prod_cat in valid_cats
 
         filtered_products = [
             p for p in self._cached_products 
