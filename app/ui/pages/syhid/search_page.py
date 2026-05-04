@@ -5,7 +5,17 @@ from app.auth.auth import AuthManager
 
 def show_page():
     """Halaman Pencarian Produk (100% Selesai) - Dipegang oleh Syahid"""
+    print("DEBUG: show_page() DIPANGGIL")  # ← tambah ini dulu
     
+    if not hasattr(state, 'page'):
+        state.page = 1
+
+    auth_redirect = AuthManager.require_auth()
+    if auth_redirect:
+        print("DEBUG: redirect ke login")
+        return auth_redirect
+    
+    print("DEBUG: auth passed")
     # 1. Proteksi Login
     auth_redirect = AuthManager.require_auth()
     if auth_redirect:
@@ -33,8 +43,21 @@ def show_page():
                 
                 # Dropdown Kategori
                 # Asumsi data_mgr.categories berisi list kategori
-                cats = ['Semua'] + data_mgr.categories if hasattr(data_mgr, 'categories') else ['Semua', 'Serum', 'Moisturizer', 'Toner']
-                cat_select = ui.select(cats, value=state.category if hasattr(state, 'category') and state.category else 'Semua', label='Kategori').classes('w-full mb-4')
+                cats = ['Semua'] + list(set(
+                    ['Serum', 'Moisturizer', 'Toner', 'Sunscreen', 'Cleanser'] +
+                    (data_mgr.categories if hasattr(data_mgr, 'categories') else [])
+                ))
+                default_category = (
+                    state.category
+                    if hasattr(state, 'category') and state.category in cats
+                    else 'Semua'
+                )
+
+                cat_select = ui.select(
+                    cats,
+                    value=default_category,
+                    label='Kategori'
+                ).classes('w-full mb-4')
                 
                 # Dropdown Tipe Kulit
                 skin_types = ['Semua', 'Dry', 'Oily', 'Normal', 'Combination', 'Sensitive']
@@ -69,29 +92,40 @@ def show_page():
                 
                 @ui.refreshable
                 def catalog_view() -> None:
-                    # Ambil kata kunci dan urutan
+                    print(f"DEBUG catalog_view dipanggil")
+                    print(f"DEBUG cat_select.value = {cat_select.value}")
+                    print(f"DEBUG state.category = {getattr(state, 'category', 'TIDAK ADA')}")
+                    
                     keyword = search_input.value.lower() if search_input.value else ""
                     sort_val = sort_select.value
-                    
-                    # Logika Pemanggilan Data 
-                    # Kita menggunakan get_paginated_products bawaan, lalu kita filter manual secara sederhana jika backend belum mendukung semua filter
+                    category_filter = cat_select.value
+
+                    ui_to_backend = {
+                        'Semua': 'All',
+                        'Serum': 'Serum',
+                        'Moisturizer': 'Moisturizer',
+                        'Toner': 'Toner',
+                        'Sunscreen': 'Sunscreen',
+                        'Cleanser': 'Cleanser',  # ← bukan 'Face Wash'
+                    }
+                    backend_category = ui_to_backend.get(category_filter, 'All')
+                    print(f"DEBUG backend_category = {backend_category}")
+
                     paginated_data = data_mgr.get_paginated_products(
-                        page=state.page, 
-                        items_per_page=12, 
-                        category_filter=cat_select.value if cat_select.value != 'Semua' else None
+                        page=state.page,
+                        items_per_page=12,
+                        category_filter=backend_category
                     )
                     
-                    # Catatan: Idealnya filter keyword, harga, tipe kulit dilakukan di get_paginated_products. 
-                    # Namun karena kita merekonstruksi fitur search 100% dan tidak ingin merusak database_manager, 
-                    # kita lakukan filtering pasca-query untuk yang belum disupport, atau asumsikan get_paginated_products sudah mengambil sebagian.
-                    # Di sini kita tampilkan item yang dikembalikan.
+                    print(f"DEBUG total_items = {paginated_data['total_items']}")
+                    print(f"DEBUG items count = {len(paginated_data['items'])}")
+                    
                     items = paginated_data["items"]
-                    
-                    # Filter manual teks pencarian (Jika belum didukung di backend)
+
                     if keyword:
-                        items = [p for p in items if keyword in p.get('product_name', p.get('name', '')).lower() or keyword in p.get('brand', '').lower()]
-                    
-                    # Filter manual Harga
+                        items = [p for p in items if keyword in p.get('product_name', p.get('name', '')).lower()
+                                or keyword in p.get('brand', '').lower()]
+
                     if price_select.value == '< Rp 50k':
                         items = [p for p in items if p.get('min_price', p.get('price', 0)) < 50000]
                     elif price_select.value == 'Rp 50k - Rp 150k':
@@ -100,15 +134,14 @@ def show_page():
                         items = [p for p in items if 150000 < p.get('min_price', p.get('price', 0)) <= 300000]
                     elif price_select.value == '> Rp 300k':
                         items = [p for p in items if p.get('min_price', p.get('price', 0)) > 300000]
-                        
-                    # Sorting manual
+
                     if sort_val == 'Rating (Tertinggi)':
                         items = sorted(items, key=lambda x: x.get('average_rating', x.get('rating', 0)), reverse=True)
                     elif sort_val == 'Harga (Terendah)':
                         items = sorted(items, key=lambda x: x.get('min_price', x.get('price', float('inf'))))
                     elif sort_val == 'Harga (Tertinggi)':
                         items = sorted(items, key=lambda x: x.get('min_price', x.get('price', 0)), reverse=True)
-                    
+
                     ui.label(f'{len(items)} PRODUK DITEMUKAN').classes('text-xs font-bold text-gray-500 mb-6 tracking-wider')
 
                     if len(items) == 0:
@@ -127,7 +160,10 @@ def show_page():
                                 img_url = prod.get('image_url', '')
                                 
                                 # Mengambil data ingredient untuk tombol +Wishlist bawaan jika diperlukan
-                                ingredient_profile = data_mgr.get_ingredient_profile(prod)
+                                try:
+                                    ingredient_profile = data_mgr.get_ingredient_profile(prod)
+                                except:
+                                    ingredient_profile = {}
 
                                 def handle_add_item(p=prod) -> None:
                                     if not any(item['slug'] == p.get('slug', '') for item in state.routine):
@@ -182,5 +218,11 @@ def show_page():
                             total_pages=paginated_data["total_pages"],
                             on_change=handle_page_change
                         )
+                print(f"DEBUG BAWAH: state.category = {getattr(state, 'category', 'TIDAK ADA')}")
 
                 catalog_view()
+                
+                if hasattr(state, 'category') and state.category:
+                    cat_select.value = state.category
+                    state.page = 1
+                    catalog_view.refresh()
