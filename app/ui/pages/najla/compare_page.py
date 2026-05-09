@@ -2,7 +2,122 @@ from nicegui import ui
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
 from app.auth.auth import AuthManager
+from app.database.engine import SessionLocal
+from app.database.models import Produk
+from sqlalchemy import or_
 import re
+
+
+def get_marketplace_price(p, platform):
+    name = p.get("product_name", "") or ""
+    brand = p.get("brand", "") or ""
+    if not name and not brand:
+        return None
+
+    terms = [name.strip()]
+    if name:
+        terms.append(" ".join(name.split()[:3]))
+    if brand:
+        terms.append(brand.strip())
+
+    filters = []
+    for term in terms:
+        if term:
+            filters.extend([
+                Produk.nama.ilike(f"%{term}%"),
+                Produk.keyword.ilike(f"%{term}%")
+            ])
+
+    if not filters:
+        return None
+
+    with SessionLocal() as session:
+        rows = session.query(Produk.harga).filter(
+            Produk.platform == platform,
+            or_(*filters)
+        ).all()
+
+        prices = [r[0] for r in rows if r[0]]
+        return min(prices) if prices else None
+
+
+def get_tokopedia_price(p):
+    return get_marketplace_price(p, "tokopedia")
+
+
+def get_lazada_price(p):
+    return get_marketplace_price(p, "lazada")
+    
+def show_all_ingredients(ingredients):
+    with ui.dialog() as dialog, ui.card():
+        ui.label("Kandungan & Fungsinya").classes("font-bold mb-2")
+
+        for ing in ingredients:
+            label = ing.lower()
+
+            if "niacinamide" in label:
+                desc = "Brightening ✨"
+            elif "hyaluronic" in label:
+                desc = "Hydrating 💧"
+            elif "centella" in label:
+                desc = "Soothing 🌿"
+            elif "salicylic" in label:
+                desc = "Acne care 🔥"
+            else:
+                desc = ""
+
+            ui.label(f"{ing} {desc}")
+
+    dialog.open()
+
+def infer_skin_types(p):
+    # Coba ambil langsung field yang sudah ada dulu.
+    if isinstance(p.get("skin_type"), (list, tuple)) and p.get("skin_type"):
+        return list(p.get("skin_type"))
+    if isinstance(p.get("skin_types"), (list, tuple)) and p.get("skin_types"):
+        return list(p.get("skin_types"))
+    if isinstance(p.get("skin_type"), str) and p.get("skin_type").strip():
+        return [p.get("skin_type").strip()]
+    if isinstance(p.get("skin_types"), str) and p.get("skin_types").strip():
+        return [p.get("skin_types").strip()]
+
+    text_parts = []
+    for field in ["product_name", "description_raw", "ingredients", "how_to_use_raw"]:
+        value = p.get(field)
+        if value:
+            text_parts.append(str(value))
+
+    for review in p.get("reviews", []):
+        if isinstance(review, dict):
+            comment = review.get("comment") or review.get("text") or ""
+            text_parts.append(str(comment))
+
+    text = " ".join(text_parts).lower()
+    patterns = {
+        "Oily": ["berminyak", "oily", "oiliness", "minyak"],
+        "Dry": ["kering", "dry", "dehydrated"],
+        "Sensitive": ["sensitif", "sensitive", "kemerahan", "redness", "iritasi", "irritated"],
+        "Combination": ["kombinasi", "combination"],
+        "Normal": ["normal"]
+    }
+
+    found = []
+    for label, keywords in patterns.items():
+        if any(keyword in text for keyword in keywords):
+            found.append(label)
+
+    return list(dict.fromkeys(found))
+
+
+def get_best_price(p):
+    prices = [
+        p.get("min_price"),              # Sociolla
+        get_tokopedia_price(p),          # Tokopedia
+        get_lazada_price(p)              # Lazada
+    ]
+
+    valid = [x for x in prices if x]
+    return min(valid) if valid else 0
 
 def show_page():
     """MISI NAJLA: Membuat Logika Perbandingan Produk"""
@@ -240,34 +355,29 @@ def show_page():
                 for p in selected_data:
                     with ui.column().classes("w-48 text-center gap-1"):
 
+                        tokped_price = get_tokopedia_price(p)
+                        lazada_price = get_lazada_price(p)
+
                         prices = {
                             "Sociolla": p.get("min_price"),
-                            "Tokopedia": p.get("price_tokopedia"),
-                            "Lazada": p.get("price_lazada"),
+                            "Tokopedia": tokped_price,
+                            "Lazada": lazada_price,
                         }
 
-                        # ambil yang ada aja
                         valid = {k: v for k, v in prices.items() if v}
 
                         if valid:
                             cheapest_market = min(valid, key=valid.get)
                             cheapest_price = valid[cheapest_market]
-
-                            # 🔥 harga utama
                             ui.label(f"🔥 {format_rp(cheapest_price)} ({cheapest_market})")\
                                 .classes("font-bold text-pink-500")
                         else:
                             ui.label("-")
 
-                        # 👇 tampilkan SEMUA marketplace (termasuk yang kosong)
+                        ui.label("Detail harga:").classes("text-xs font-semibold text-gray-500")
                         for name, price in prices.items():
-                            if name != cheapest_market:
-                                if price:
-                                    ui.label(f"{name}: {format_rp(price)}")\
-                                        .classes("text-xs text-gray-400")
-                                else:
-                                    ui.label(f"{name}: -")\
-                                        .classes("text-xs text-gray-300")
+                            ui.label(f"{name}: {format_rp(price)}")\
+                                .classes("text-xs text-gray-400")
 
             row("Harga/ml", [safe_price_per_ml(p) for p in selected_data])
 
@@ -286,7 +396,7 @@ def show_page():
                 for p in selected_data:
                     with ui.column().classes("w-48 items-center gap-1"):
 
-                        skins = p.get("skin_type") or p.get("skin_types") or []
+                        skins = infer_skin_types(p)
 
                         if skins:
                             for skin in skins:
@@ -297,14 +407,27 @@ def show_page():
                             ui.label("-")
             
             with ui.row().classes("items-center gap-6 flex-nowrap"):
-                ui.label("Bahan Aktif").classes("w-40")
+                ui.label("Kandungan Utama").classes("w-40")
 
                 for p in selected_data:
                     with ui.column().classes("w-48 items-center gap-1"):
 
                         raw = p.get("ingredients_raw") or p.get("ingredients") or ""
                         text = re.sub(r'<[^>]+>', '', raw)
-                        ingredients = [i.strip() for i in text.split(",") if i.strip()]
+                        skip = [
+                            "aqua", "water", "parfum", "fragrance",
+                            "butylene glycol", "propylene glycol",
+                            "glycerin"
+                        ]
+
+                        ingredients = [
+                            i.strip() for i in text.split(",")
+                            if i.strip() and i.lower() not in skip
+                        ]
+
+                        for ing in ingredients[:2]:
+                            if len(ingredients) > 2:
+                                 ui.label("...").classes("text-xs text-gray-400")
 
                         if not ingredients:
                             ui.label("-")
@@ -315,40 +438,123 @@ def show_page():
                                 )
 
                             if len(ingredients) > 3:
-                                ui.label(f"+{len(ingredients)-3}").classes(
-                                    "px-2 py-1 text-xs border rounded-full"
-                                )
+                                ui.button(
+                                    f"+{len(ingredients)-3} lainnya",
+                                    on_click=lambda e, ing=ingredients: show_all_ingredients(ing)
+                                ).classes("text-xs bg-gray-100 px-2 py-1 rounded-full")
             # ================= VISUALISASI =================
             with ui.card().classes("w-full p-4 mt-4"):
                 ui.label("Perbandingan Visual Produk").classes("font-semibold mb-3")
 
+                def get_score(p):
+                    price = get_best_price(p)
+                    rating = p.get('average_rating') or 0
+
+                    if not price:
+                        return 0
+
+                    return rating / price
+
+
+                # cari best
+                best_value = max(selected_data, key=get_score)
+                best_price = min(selected_data, key=lambda x: get_best_price(x) or 999999)
+                best_rating = max(selected_data, key=lambda x: x.get('average_rating') or 0)
+
                 names = [p['brand'] for p in selected_data]
-                prices = [p.get('min_price') or 0 for p in selected_data]
+                prices = [get_best_price(p) for p in selected_data]
                 ratings = [p.get('average_rating') or 0 for p in selected_data]
 
                 # ===== CHART HARGA =====
-                ui.label("Harga Produk").classes("text-sm text-gray-500")
+                ui.label("💰 Perbandingan Harga (lebih murah lebih baik)").classes("text-sm text-gray-500")
+                min_price = min(prices)
 
                 ui.echart({
-                    'xAxis': {'type': 'category', 'data': names},
+                    'xAxis': {
+                        'type': 'category',
+                        'data': names
+                    },
                     'yAxis': {'type': 'value'},
                     'series': [{
                         'type': 'bar',
-                        'data': prices
+                        'data': [
+                            {
+                                'value': v,
+                                'itemStyle': {
+                                    'color': '#22c55e' if v == min_price else '#f472b6'
+                                }
+                            }
+                            for v in prices
+                        ],
+                        'label': {
+                            'show': True,
+                            'position': 'top'
+                        }
                     }]
-                }).classes("w-full h-48 mb-4")
+                }).classes("w-full h-64")
 
                 # ===== CHART RATING =====
-                ui.label("Rating Produk").classes("text-sm text-gray-500")
+                ui.label("⭐ Perbandingan Rating (lebih tinggi lebih baik)").classes("text-sm text-gray-500")
+
+                max_rating = max(ratings)
+
+                chart_data = []
+                for v in ratings:
+                    if v == max_rating:
+                        chart_data.append({
+                            'value': v,
+                            'itemStyle': {'color': '#facc15'}  # kuning (best)
+                        })
+                    else:
+                        chart_data.append({
+                            'value': v,
+                            'itemStyle': {'color': '#60a5fa'}  # biru biasa
+                        })
 
                 ui.echart({
                     'xAxis': {'type': 'category', 'data': names},
-                    'yAxis': {'type': 'value'},
+                    'yAxis': {
+                        'type': 'value',
+                        'max': 5
+                    },
                     'series': [{
                         'type': 'bar',
-                        'data': ratings
+                        'data': chart_data,
+                        'label': {
+                            'show': True,
+                            'position': 'top',
+                            'formatter': '{c} ⭐'
+                        }
                     }]
-                }).classes("w-full h-48")
+                }).classes("w-full h-64")
+
+                ui.label("📊 Ringkasan Perbandingan").classes("text-lg font-semibold mt-4")
+
+                with ui.row().classes("gap-4"):
+
+                    # 🏆 BEST VALUE
+                    with ui.card().classes("p-4 w-72"):
+                        ui.label(f"🏆 Paling Worth It: {best_value['brand']}")\
+                            .classes("font-bold text-green-600")
+
+                        ui.label("✔ Kombinasi harga & rating terbaik")\
+                            .classes("text-sm text-gray-600")
+
+                    # 💰 TERMURAH
+                    with ui.card().classes("p-4 w-72"):
+                        ui.label(f"💰 Paling Murah: {best_price['brand']}")\
+                            .classes("font-bold text-pink-500")
+
+                        ui.label("✔ Cocok kalau budget minim")\
+                            .classes("text-sm text-gray-600")
+
+                    # ⭐ RATING
+                    with ui.card().classes("p-4 w-72"):
+                        ui.label(f"⭐ Rating Tertinggi: {best_rating['brand']}")\
+                            .classes("font-bold text-yellow-500")
+
+                        ui.label("✔ Kualitas paling bagus dari review")\
+                            .classes("text-sm text-gray-600")
 
     render()
     # --- AKHIR AREA BELAJAR ---
