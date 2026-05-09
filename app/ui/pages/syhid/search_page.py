@@ -162,12 +162,14 @@ def show_page():
                                     ingredient_profile = {}
 
                                 def handle_add_item(p=prod) -> None:
-                                    if not any(item['slug'] == p.get('slug', '') for item in state.routine):
-                                        state.routine.append(p)
-                                        taskbar_status.refresh()
-                                        ui.notify(f'✨ {p.get("name", "Produk")} berhasil ditambahkan ke Wishlist!', color='pink', position='bottom-right')
+                                    current = getattr(state, 'wishlist', [])
+                                    if not any(item.get('slug') == p.get('slug', '') for item in current):
+                                        object.__setattr__(state, 'wishlist', current + [p])
+                                        print(f"DEBUG wishlist sekarang: {len(getattr(state, 'wishlist', []))} produk")
+                                        ui.notify(f'✨ {p.get("product_name", "Produk")} ditambahkan ke Wishlist!', 
+                                                color='pink', position='bottom-right')
                                     else:
-                                        ui.notify('✨ Produk ini sudah ada di dalam Wishlist Anda.', color='info', position='bottom-right')
+                                        ui.notify('Produk ini sudah ada di Wishlist.', color='info', position='bottom-right')
 
                                 # Kartu Produk
                                 with ui.card().classes('p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between'):
@@ -199,7 +201,7 @@ def show_page():
                                     # Tombol Bawah
                                     with ui.row().classes('w-full gap-2 mt-auto'):
                                         ui.button('Detail', color='white').classes('flex-1 border border-gray-300 text-xs text-black shadow-none')
-                                        ui.button('+ Wishlist', color='pink-50', on_click=lambda p=prod: handle_add_item(p)).classes('flex-[1.5] shadow-none font-bold border border-pink-200 text-pink-600 text-xs px-1')
+                                        ui.button('+ Wishlist', color='pink-50', on_click=handle_add_item).classes('flex-[1.5] shadow-none font-bold border border-pink-200 text-pink-600 text-xs px-1')
 
                     # Pagination Bawaan
                     def handle_page_change(new_page: int) -> None:

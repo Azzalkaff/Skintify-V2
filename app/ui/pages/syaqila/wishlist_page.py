@@ -16,84 +16,80 @@ def show_page():
     # --- 🚀 MULAI KERJAKAN DI SINI (AREA BELAJAR SYAQILA) ---
     
     # Data produk wishlist (nanti bisa diganti dari data_mgr)
- # --- 🚀 AREA WISHLIST DINAMIS ---
+    # --- 🚀 AREA WISHLIST DINAMIS ---
 
-# init state wishlist
-if 'wishlist' not in state.__dict__:
-    state.__dict__['wishlist'] = []
+    wishlist_products = getattr(state, 'wishlist', [])
 
-wishlist_products = state.__dict__.get('wishlist', [])
-
-
-def hapus_produk(product_name: str):
-    state.__dict__['wishlist'] = [
-        p for p in state.__dict__.get('wishlist', [])
-        if p.get("name") != product_name
-    ]
-    ui.notify(f'Produk "{product_name}" dihapus')
-    ui.navigate.to('/wishlist')
+    print(f"DEBUG wishlist isi: {state.wishlist}")
+    print(f"DEBUG jumlah: {len(state.wishlist)}")
 
 
-with ui.column().classes('w-full p-8 bg-rose-50/30 min-h-screen gap-4'):
+    def hapus_produk(slug: str):
+        current = getattr(state, 'wishlist', [])
+        object.__setattr__(state, 'wishlist', [p for p in current if p.get('slug') != slug])
+        ui.notify('Produk dihapus dari Wishlist')
+        ui.navigate.to('/wishlist')
 
-    # HEADER
-    with ui.row().classes('w-full items-center justify-between pb-2 border-b border-gray-200'):
-        ui.label('Wishlist').classes('text-2xl font-bold text-gray-800')
-        with ui.element('div').classes('bg-pink-100 px-4 py-1.5 rounded-full'):
-            ui.label('Kulit: Oily').classes('text-pink-600 text-sm font-medium')
 
-    # jumlah produk
-    ui.label(f'{len(wishlist_products)} PRODUK TERSIMPAN').classes(
-        'text-xs font-semibold text-gray-500 tracking-wider mt-2'
-    )
+    with ui.column().classes('w-full p-8 bg-rose-50/30 min-h-screen gap-4'):
 
-    # EMPTY STATE
-    if not wishlist_products:
-        ui.label("Belum ada produk di wishlist 😢").classes(
-            "text-gray-400 mt-6 text-center"
+        # HEADER
+        with ui.row().classes('w-full items-center justify-between pb-2 border-b border-gray-200'):
+            ui.label('Wishlist').classes('text-2xl font-bold text-gray-800')
+            with ui.element('div').classes('bg-pink-100 px-4 py-1.5 rounded-full'):
+                ui.label('Kulit: Oily').classes('text-pink-600 text-sm font-medium')
+
+        # jumlah produk
+        ui.label(f'{len(wishlist_products)} PRODUK TERSIMPAN').classes(
+            'text-xs font-semibold text-gray-500 tracking-wider mt-2'
         )
 
-    # LIST PRODUK
-    with ui.grid(columns=1).classes('w-full gap-3'):
-        for product in wishlist_products:
+        # EMPTY STATE
+        if not wishlist_products:
+            ui.label("Belum ada produk di wishlist 😢").classes(
+                "text-gray-400 mt-6 text-center"
+            )
 
-            with ui.card().classes(
-                'w-full p-4 rounded-xl shadow-none border border-gray-100 '
-                'hover:shadow-md transition-shadow bg-white'
-            ):
-                with ui.row().classes('w-full items-center justify-between no-wrap'):
+        # LIST PRODUK
+        with ui.grid(columns=1).classes('w-full gap-3'):
+            for product in wishlist_products:
 
-                    # KIRI
-                    with ui.row().classes('items-center gap-4 no-wrap flex-1'):
+                with ui.card().classes(
+                    'w-full p-4 rounded-xl shadow-none border border-gray-100 '
+                    'hover:shadow-md transition-shadow bg-white'
+                ):
+                    with ui.row().classes('w-full items-center justify-between no-wrap'):
 
-                        with ui.element('div').classes(
-                            f'{product.get("bg_color", "bg-pink-50")} w-14 h-14 rounded-xl '
-                            'flex items-center justify-center text-2xl'
-                        ):
-                            ui.label(product.get('icon', '🧴'))
+                        # KIRI
+                        with ui.row().classes('items-center gap-4 no-wrap flex-1'):
 
-                        with ui.column().classes('gap-0'):
-                            ui.label(product.get('name', '-')).classes(
-                                'text-base font-bold text-gray-800'
+                            with ui.element('div').classes(
+                                f'{product.get("bg_color", "bg-pink-50")} w-14 h-14 rounded-xl '
+                                'flex items-center justify-center text-2xl'
+                            ):
+                                ui.label(product.get('icon', '🧴'))
+
+                            with ui.column().classes('gap-0'):
+                                ui.label(product.get('product_name', product.get('name', '-'))).classes(
+                                    'text-base font-bold text-gray-800'
+                                )
+                                ui.label(
+                                    f'{product.get("brand", "-")} · {product.get("category", "-")}'
+                                ).classes('text-sm text-gray-500')
+
+                        # TENGAH
+                        with ui.column().classes('items-end gap-0 mr-4'):
+                            ui.label(f"Rp{product.get('min_price', 0):,.0f}".replace(',', '.')).classes(
+                                'text-base font-bold text-pink-500'
                             )
-                            ui.label(
-                                f'{product.get("brand", "-")} · {product.get("category", "-")}'
-                            ).classes('text-sm text-gray-500')
+                            ui.label(f'★ {product.get("average_rating", "-")}').classes(
+                                'text-sm text-yellow-500 font-medium'
+                            )
 
-                    # TENGAH
-                    with ui.column().classes('items-end gap-0 mr-4'):
-                        ui.label(product.get('price', '-')).classes(
-                            'text-base font-bold text-pink-500'
+                        # KANAN
+                        ui.button(
+                            'Hapus',
+                            on_click=lambda p=product: hapus_produk(p.get('slug'))
+                        ).props('outline no-caps').classes(
+                            'text-pink-500 border-pink-300 rounded-lg px-6'
                         )
-                        ui.label(f'★ {product.get("rating", "-")}').classes(
-                            'text-sm text-yellow-500 font-medium'
-                        )
-
-                    # KANAN
-                    ui.button(
-                        'Hapus',
-                        on_click=lambda p=product: hapus_produk(p.get('name'))
-                    ).props('outline no-caps').classes(
-                        'text-pink-500 border-pink-300 rounded-lg px-6'
-                    )
-
