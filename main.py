@@ -13,10 +13,9 @@ BasisData.inisialisasi()
 
 # 2. Konfigurasi Static Files & Head
 import os
-base_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir  = os.path.dirname(os.path.abspath(__file__))
 style_dir = os.path.join(base_dir, 'app', 'ui', 'style')
 ui.add_head_html('<link href="/static/style.css" rel="stylesheet">', shared=True)
-
 app.add_static_files('/static', style_dir)
 
 # 3. Daftar Halaman (Kontrak Kerja Tim)
@@ -24,7 +23,7 @@ app.add_static_files('/static', style_dir)
 # Najla: compare, stats
 # Falisha: profile, onboarding
 PAGES = {
-    # '/': 'syaqila.home_page',
+    '/': 'syaqila.home_page',
     '/search': 'syhid.search_page',
     '/compare': 'najla.compare_page',
     '/wishlist': 'syaqila.wishlist_page',
@@ -34,55 +33,105 @@ PAGES = {
     '/login': 'login_page',
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPER RIWAYAT AKTIVITAS
+#  Dipanggil oleh halaman lain (compare, search, wishlist) untuk mencatat log.
+#  Contoh pemakaian di compare_page.py:
+#    from main import tambah_riwayat
+#    tambah_riwayat('compare_arrows', 'blue', 'Membandingkan 2 produk', 'Wardah vs The Ordinary')
+# ─────────────────────────────────────────────────────────────────────────────
+def tambah_riwayat(icon: str, color: str, judul: str, subjudul: str = ''):
+    """Tambah satu entri ke riwayat aktivitas user di app.storage."""
+    import datetime
+    riwayat = app.storage.user.get('activity_log', [])
+    riwayat.insert(0, {
+        'icon':     icon,
+        'color':    color,
+        'judul':    judul,
+        'subjudul': subjudul,
+        'waktu':    datetime.datetime.now().strftime('%d %b %Y, %H:%M'),
+    })
+    app.storage.user['activity_log'] = riwayat[:20]   # max 20 entri
+
+
+# 4. Route Khusus: Halaman Utama (/)
 @ui.page('/')
 def index():
+    # Belum login → ke login
+    if not app.storage.user.get('authenticated'):
+        return ui.navigate.to('/login')
+    # Sudah login tapi belum isi onboarding → ke onboarding
     if not app.storage.user.get('skin_type'):
+        app.storage.user['onboarding_mode'] = None   # pastikan mode bukan 'edit'
         return ui.navigate.to('/onboarding')
-    
-    try:
-        module = importlib.import_module('app.ui.pages.syaqila.home_page')
-        importlib.reload(module)
-        return module.show_page()
-    except Exception as e:
-        logger.error(f"Error loading home: {e}")
-        ui.label("Gagal memuat halaman utama.")
+    # Semua OK → tampilkan home
+    from app.ui.pages.syaqila.home_page import show_page
+    return show_page()
 
+
+# 5. Fungsi Pembungkus Route yang Aman
 def create_safe_route(path, module_name):
-    """Fungsi pembungkus agar error di satu file tidak merusak seluruh aplikasi"""
+    """Membungkus setiap halaman agar error di satu file tidak merusak aplikasi."""
+
     @ui.page(path)
     def _page_wrapper():
+        # Halaman yang boleh diakses tanpa login
+        is_standalone = path in ['/login', '/onboarding']
+
         try:
-            # Import dinamis saat halaman diakses
+            # A. Proteksi Login
+            if path != '/login' and not app.storage.user.get('authenticated'):
+                return ui.navigate.to('/login')
+
+            # B. Proteksi Onboarding
+            #    Kalau belum isi skin_type dan bukan di /onboarding, suruh isi dulu.
+            #    KECUALI: user sedang di mode 'edit' (datang dari tombol Edit Profil)
+            #    — dalam kasus itu, skin_type sudah ada, jadi tidak akan ter-redirect.
+            if (path not in ['/login', '/onboarding']
+                    and not app.storage.user.get('skin_type')):
+                return ui.navigate.to('/onboarding')
+
+            # C. Import modul secara dinamis
             module = importlib.import_module(f'app.ui.pages.{module_name}')
             importlib.reload(module)
+
+            # D. Navbar & Sidebar hanya untuk halaman utama (bukan login/onboarding)
+            if not is_standalone:
+                UIComponents.navbar()
+                UIComponents.sidebar()
+
             return module.show_page()
-        except ImportError:
-            UIComponents.navbar()
-            UIComponents.sidebar()
-            with ui.column().classes('w-full h-screen items-center justify-center'):
-                ui.icon('construction', size='100px', color='orange-200')
-                ui.label(f'Halaman "{module_name}" belum tersedia.').classes('text-2xl font-bold text-gray-400')
+
         except Exception as e:
-            logger.error(f"Error pada halaman {module_name}: {e}")
-            UIComponents.navbar()
-            UIComponents.sidebar()
+            logger.error(f"Error pada {module_name}: {e}")
+            if not is_standalone:
+                UIComponents.navbar()
+                UIComponents.sidebar()
+
             with ui.column().classes('w-full h-screen items-center justify-center p-10'):
                 ui.icon('report_problem', size='100px', color='red-200')
-                ui.label('Ups! Terjadi Kesalahan Teknis').classes('text-3xl font-black text-red-600')
-                ui.label(f'Halaman {module_name} sedang diperbaiki oleh rekan tim Anda.').classes('text-gray-500 mt-2')
-                with ui.expansion('Detail Error untuk Developer').classes('w-full max-w-2xl mt-8'):
+                ui.label('Ups! Terjadi Kesalahan Teknis').classes(
+                    'text-3xl font-black text-red-600'
+                )
+                ui.label(f'Halaman {module_name} sedang diperbaiki oleh rekan tim Anda.').classes(
+                    'text-gray-500'
+                )
+                with ui.expansion('Detail Error untuk Developer').classes('w-full max-w-2xl mt-4'):
                     ui.code(str(e)).classes('w-full bg-red-50 p-4 rounded')
 
-# 4. Registrasi Semua Halaman
+
+# 6. Registrasi Semua Halaman
 for path, module in PAGES.items():
     create_safe_route(path, module)
 
-# 5. Jalankan Aplikasi
+
+# 7. Jalankan Aplikasi
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
-        title="Skintify Desktop - Team Lab", 
-        storage_secret='reset-falisha-01',
+        title='Skintify Desktop - Team Lab',
+        storage_secret='skintify-secret-key-2026',
+        port=8081,
         native=True,
         window_size=(1280, 800),
-        reload=False
+        reload=True,
     )
