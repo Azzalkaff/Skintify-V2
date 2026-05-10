@@ -200,7 +200,33 @@ def show_page():
                                     
                                     # Tombol Bawah
                                     with ui.row().classes('w-full gap-2 mt-auto'):
-                                        ui.button('Detail', color='white').classes('flex-1 border border-gray-300 text-xs text-black shadow-none')
+                                        def lihat_detail(p=prod):
+                                            # Simpan ke recent_products
+                                            print(f"DEBUG lihat_detail dipanggil: {p.get('product_name')}")
+                                            recent = state.__dict__.get('recent_products', [])
+                                            print(f"DEBUG recent sebelum: {len(recent)}")
+                                            if not any(x.get('slug') == p.get('slug') for x in recent):
+                                                recent.insert(0, p)
+                                                state.__dict__['recent_products'] = recent[:5]  # maks 5 produk
+
+                                            # Buka dialog detail
+                                            with ui.dialog() as dialog, ui.card().classes('p-6 w-96 gap-3'):
+                                                if p.get('image_url'):
+                                                    ui.image(p['image_url']).classes('w-full h-48 object-contain')
+                                                ui.label(p.get('product_name', '-')).classes('text-lg font-bold')
+                                                ui.label(p.get('brand', '-')).classes('text-sm text-gray-500')
+                                                ui.label(f"Kategori: {p.get('category', '-')}").classes('text-sm')
+                                                ui.label(f"Harga: Rp{p.get('min_price', 0):,.0f}".replace(',', '.')).classes('text-pink-500 font-bold')
+                                                ui.label(f"Rating: ★ {p.get('average_rating', '-')}").classes('text-yellow-500')
+                                                
+                                                raw = p.get('ingredients_raw') or p.get('ingredients') or '-'
+                                                ui.label('Kandungan:').classes('font-bold text-sm mt-2')
+                                                ui.label(raw[:300] + '...' if len(str(raw)) > 300 else raw).classes('text-xs text-gray-500')
+                                                
+                                                ui.button('Tutup', on_click=dialog.close).classes('w-full mt-2 bg-pink-500 text-white')
+                                            dialog.open()
+
+                                        ui.button('Detail', on_click=lambda p=prod: lihat_detail(p)).classes('flex-1 border border-gray-300 text-xs text-black shadow-none')
                                         ui.button('+ Wishlist', color='pink-50', on_click=handle_add_item).classes('flex-[1.5] shadow-none font-bold border border-pink-200 text-pink-600 text-xs px-1')
 
                     # Pagination Bawaan

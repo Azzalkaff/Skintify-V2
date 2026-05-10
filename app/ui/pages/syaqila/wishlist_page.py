@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import ui, app
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
 from app.auth.auth import AuthManager
@@ -37,7 +37,8 @@ def show_page():
         with ui.row().classes('w-full items-center justify-between pb-2 border-b border-gray-200'):
             ui.label('Wishlist').classes('text-2xl font-bold text-gray-800')
             with ui.element('div').classes('bg-pink-100 px-4 py-1.5 rounded-full'):
-                ui.label('Kulit: Oily').classes('text-pink-600 text-sm font-medium')
+                skin_type = app.storage.user.get('skin_type', 'Belum diisi')
+                ui.label(f'Kulit: {skin_type}').classes('text-pink-600 text-sm font-medium')
 
         # jumlah produk
         ui.label(f'{len(wishlist_products)} PRODUK TERSIMPAN').classes(
@@ -63,11 +64,13 @@ def show_page():
                         # KIRI
                         with ui.row().classes('items-center gap-4 no-wrap flex-1'):
 
-                            with ui.element('div').classes(
-                                f'{product.get("bg_color", "bg-pink-50")} w-14 h-14 rounded-xl '
-                                'flex items-center justify-center text-2xl'
-                            ):
-                                ui.label(product.get('icon', '🧴'))
+                            with ui.element('div').classes('w-14 h-14 rounded-xl overflow-hidden bg-pink-50 flex items-center justify-center'):
+                                if product.get('image_url') and str(product.get('image_url')).startswith('http'):
+                                    ui.image(product['image_url']).classes('w-full h-full object-contain')
+                                else:
+                                    icon_map = {'Serum': '💧', 'Moisturizer': '🧴', 'Toner': '🌊', 'Sunscreen': '☀️'}
+                                    cat_icon = icon_map.get(product.get('category', ''), '🧴')
+                                    ui.label(cat_icon).classes('text-2xl')
 
                             with ui.column().classes('gap-0'):
                                 ui.label(product.get('product_name', product.get('name', '-'))).classes(

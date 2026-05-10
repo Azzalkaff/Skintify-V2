@@ -124,7 +124,13 @@ def show_page():
                 for p in recent_products:
                     with ui.row().classes('w-full items-center justify-between border-b pb-2'):
 
-                        ui.label('🧴').classes('text-3xl bg-pink-50 rounded-lg p-2')
+                        with ui.element('div').classes('w-12 h-12 rounded-lg overflow-hidden bg-pink-50 flex items-center justify-center shrink-0'):
+                            if p.get('image_url') and str(p.get('image_url')).startswith('http'):
+                                ui.image(p['image_url']).classes('w-full h-full object-contain')
+                            else:
+                                icon_map = {'Serum': '💧', 'Moisturizer': '🧴', 'Toner': '🌊', 'Sunscreen': '☀️'}
+                                cat_icon = icon_map.get(p.get('category', ''), '🧴')
+                                ui.label(cat_icon).classes('text-xl')
 
                         with ui.column().classes('gap-0 flex-1 ml-4'):
                             ui.label(p.get("product_name", "-")).classes('font-bold text-sm')
